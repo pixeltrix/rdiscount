@@ -27,7 +27,6 @@ Gem::Specification.new do |s|
                 "lib/markdown.rb", 
                 "lib/rdiscount.rb", 
                 "Rakefile", 
-                "rdiscount.gemspec", 
                 "README.markdown", 
                 "test/benchmark.rb", 
                 "test/benchmark.txt", 
@@ -38,5 +37,6 @@ Gem::Specification.new do |s|
   s.test_files = ["test/markdown_test.rb", "test/rdiscount_test.rb"]
   s.extra_rdoc_files = ["COPYING"]
   s.extensions = ["ext/extconf.rb"]
+  s.executables = ["rdiscount"]
   s.require_paths = ["lib"]
 end
