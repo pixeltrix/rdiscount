@@ -1,15 +1,16 @@
-$: << File.join(File.dirname(__FILE__), "../lib")
+rootdir = File.dirname(File.dirname(__FILE__))
+$LOAD_PATH.unshift "#{rootdir}/lib"
 
 require 'test/unit'
 require 'markdown'
 
-MARKDOWN_TEST_DIR = "#{File.dirname(__FILE__)}/MarkdownTest_1.0.3"
+MARKDOWN_TEST_DIR = "#{rootdir}/test/MarkdownTest_1.0.3"
 
 class MarkdownTest < Test::Unit::TestCase
 
   def test_that_extension_methods_are_present_on_markdown_class
-    assert Markdown.instance_methods.include?('to_html'),
-      "Markdown class should respond to #to_html"
+      assert Markdown.instance_methods.map{|m| m.to_s }.include?('to_html'),
+        "Markdown class should respond to #to_html"
   end
 
   def test_that_simple_one_liner_goes_to_html
@@ -20,7 +21,6 @@ class MarkdownTest < Test::Unit::TestCase
 
   def test_that_inline_markdown_goes_to_html
     markdown = Markdown.new('_Hello World_!')
-    assert_respond_to markdown, :to_html
     assert_equal "<p><em>Hello World</em>!</p>", markdown.to_html.strip
   end
 
@@ -28,6 +28,9 @@ class MarkdownTest < Test::Unit::TestCase
     markdown = Markdown.new('_start _ foo_bar bar_baz _ end_ *italic* **bold** <a>_blah_</a>')
     assert_respond_to markdown, :to_html
     assert_equal "<p><em>start _ foo_bar bar_baz _ end</em> <em>italic</em> <strong>bold</strong> <a><em>blah</em></a></p>", markdown.to_html.strip
+
+    markdown = Markdown.new("Run 'rake radiant:extensions:rbac_base:migrate'")
+    assert_equal "<p>Run 'rake radiant:extensions:rbac_base:migrate'</p>", markdown.to_html.strip
   end
 
   def test_that_filter_html_works
@@ -77,6 +80,18 @@ class MarkdownTest < Test::Unit::TestCase
   def test_that_urls_are_not_doubly_escaped
     markdown = Markdown.new('[Page 2](/search?query=Markdown+Test&page=2)')
     assert_equal "<p><a href=\"/search?query=Markdown+Test&amp;page=2\">Page 2</a></p>\n", markdown.to_html
+  end
+
+  def test_simple_inline_html
+    markdown = Markdown.new("before\n\n<div>\n  foo\n</div>\nafter")
+    assert_equal "<p>before</p>\n\n<div>\n  foo\n</div>\n\n\n<p>after</p>\n",
+      markdown.to_html
+  end
+
+  def test_that_html_blocks_do_not_require_their_own_end_tag_line
+    markdown = Markdown.new("Para 1\n\n<div><pre>HTML block\n</pre></div>\n\nPara 2 [Link](#anchor)")
+    assert_equal "<p>Para 1</p>\n\n<div><pre>HTML block\n</pre></div>\n\n\n<p>Para 2 <a href=\"#anchor\">Link</a></p>\n",
+      markdown.to_html
   end
 
   # Build tests for each file in the MarkdownTest test suite

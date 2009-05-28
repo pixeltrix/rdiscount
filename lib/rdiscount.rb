@@ -24,6 +24,7 @@
 #   end
 #
 class RDiscount
+  VERSION = '1.3.4'
 
   # Original Markdown formatted text.
   attr_reader :text
@@ -40,6 +41,9 @@ class RDiscount
   # RedCloth compatible line folding -- not used for Markdown but
   # included for compatibility.
   attr_accessor :fold_lines
+
+  # Enable Table Of Contents generation
+  attr_accessor :generate_toc
 
   # Create a RDiscount Markdown processor. The +text+ argument
   # should be a string containing Markdown text. Additional arguments may be

@@ -124,6 +124,14 @@ skipempty(Line *p)
 }
 
 
+void
+___mkd_tidy(Line *t)
+{
+    while ( S(t->text) && isspace(T(t->text)[S(t->text)-1]) )
+	--S(t->text);
+}
+
+
 static char *
 isopentag(Line *p)
 {
@@ -181,22 +189,45 @@ static Line *
 htmlblock(Paragraph *p, char *tag)
 {
     Line *t = p->text, *ret;
-    int closesize;
+    int closesize, tagsize;
     char close[MAXTAG+4];
 
-    if ( selfclose(t, tag) || (strlen(tag) >= MAXTAG) ) {
+    char *ps, *pse;
+    int depth;
+
+    tagsize = strlen(tag);
+
+    if ( selfclose(t, tag) || (tagsize >= MAXTAG) ) {
 	ret = t->next;
 	t->next = 0;
 	return ret;
     }
 
     closesize = sprintf(close, "</%s>", tag);
+    depth = 0;
 
     for ( ; t ; t = t->next) {
-	if ( strncasecmp(T(t->text), close, closesize) == 0 ) {
-	    ret = t->next;
-	    t->next = 0;
-	    return ret;
+	ps = T(t->text);
+	pse = ps + (S(t->text) - (tagsize + 1));
+	for ( ; ps < pse; ps++ ) {
+	    if ( *ps == '<' ) {
+	        /* check for close tag */
+	        if ( strncasecmp(ps, close, closesize) == 0 ) {
+	            depth--;
+	            if ( depth == 0 ) {
+	                ret = t->next;
+	                t->next = 0;
+	                return ret;
+	            }
+	            continue;
+	        }
+
+	        /* check for nested open tag */
+	        if ( (strncasecmp(ps + 1, tag, tagsize) == 0) &&
+	             (ps[tagsize + 1] == '>' || ps[tagsize + 1] == ' ') ) {
+	            depth++;
+	        }
+	    }
 	}
     }
     return 0;
@@ -286,7 +317,7 @@ ishr(Line *t)
 static int
 ishdr(Line *t, int *htyp)
 {
-    int i, j;
+    int i;
 
 
     /* first check for etx-style ###HEADER###
@@ -297,21 +328,11 @@ ishdr(Line *t, int *htyp)
     for ( i=0; T(t->text)[i] == '#'; ++i)
 	;
 
+    /* ANY leading `#`'s make this into an ETX header
+     */
     if ( i ) {
-	i = nextnonblank(t, i);
-
-	j = S(t->text)-1;
-
-	while ( (j > i) && (T(t->text)[j] == '#') )
-	    --j;
-	
-	while ( (j > 1) && isspace(T(t->text)[j]) )
-	    --j;
-
-	if ( i < j ) {
-	    *htyp = ETX;
-	    return 1;
-	}
+	*htyp = ETX;
+	return 1;
     }
 
     /* then check for setext-style HEADER
@@ -362,7 +383,7 @@ islist(Line *t, int *trim)
 	*trim = 4;
 	return DL;
     }
-    
+
     if ( strchr("*-+", T(t->text)[t->dle]) && isspace(T(t->text)[t->dle+1]) ) {
 	i = nextnonblank(t, t->dle+1);
 	*trim = (i > 4) ? 4 : i;
@@ -371,6 +392,13 @@ islist(Line *t, int *trim)
 
     if ( (j = nextblank(t,t->dle)) > t->dle ) {
 	if ( T(t->text)[j-1] == '.' ) {
+#if ALPHA_LIST
+	if ( (j == t->dle + 2) && isalpha(T(t->text)[t->dle]) ) {
+	    j = nextnonblank(t,j);
+	    *trim = j;
+	    return AL;
+	}
+#endif
 	    strtoul(T(t->text)+t->dle, &q, 10);
 	    if ( (q > T(t->text)+t->dle) && (q == T(t->text) + (j-1)) ) {
 		j = nextnonblank(t,j);
@@ -406,7 +434,7 @@ headerblock(Paragraph *pp, int htyp)
 	     * the leading and trailing `#`'s
 	     */
 
-	    for (i=0; T(p->text)[i] == T(p->text)[0]; i++)
+	    for (i=0; (T(p->text)[i] == T(p->text)[0]) && (i < S(p->text)-1); i++)
 		;
 
 	    pp->hnumber = i;
@@ -416,8 +444,11 @@ headerblock(Paragraph *pp, int htyp)
 
 	    CLIP(p->text, 0, i);
 
-	    for (j=S(p->text); j && (T(p->text)[j-1] == '#'); --j)
+	    for (j=S(p->text); (j > 1) && (T(p->text)[j-1] == '#'); --j)
 		;
+
+	    while ( j && isspace(T(p->text)[j-1]) )
+		--j;
 
 	    S(p->text) = j;
 
@@ -433,12 +464,6 @@ static Line *
 codeblock(Paragraph *p)
 {
     Line *t = p->text, *r;
-
-    /* HORRIBLE STANDARDS KLUDGE: the first line of every block
-     * has trailing whitespace trimmed off.
-     */
-    while ( S(t->text) && isspace(T(t->text)[S(t->text)-1]) )
-	--S(t->text);
 
     for ( ; t; t = r ) {
 	CLIP(t->text,0,4);
@@ -492,13 +517,55 @@ textblock(Paragraph *p, int toplevel)
 {
     Line *t, *next;
 
-    for ( t = p->text; t ; t = next )
+    for ( t = p->text; t ; t = next ) {
 	if ( ((next = t->next) == 0) || endoftextblock(next, toplevel) ) {
 	    p->align = centered(p->text, t);
 	    t->next = 0;
 	    return next;
 	}
+    }
     return t;
+}
+
+
+/* length of the id: or class: kind in a special div-not-quote block
+ */
+static int
+szmarkerclass(char *p)
+{
+    if ( strncasecmp(p, "id:", 3) == 0 )
+	return 3;
+    if ( strncasecmp(p, "class:", 6) == 0 )
+	return 6;
+    return 0;
+}
+
+
+/*
+ * check if the first line of a quoted block is the special div-not-quote
+ * marker %[kind:]name%
+ */
+static int
+isdivmarker(Line *p)
+{
+#if DIV_QUOTE
+    char *s = T(p->text);
+    int len = S(p->text);
+    int i;
+
+    if ( !(len && s[0] == '%' && s[len-1] == '%') ) return 0;
+
+    i = szmarkerclass(s+1);
+    --len;
+
+    while ( ++i < len )
+	if ( !isalnum(s[i]) )
+	    return 0;
+
+    return 1;
+#else
+    return 0;
+#endif
 }
 
 
@@ -528,8 +595,26 @@ quoteblock(Paragraph *p)
 
 	if ( !(q = skipempty(t->next)) || ((q != t->next) && !isquote(q)) ) {
 	    ___mkd_freeLineRange(t, q);
-	    return q;
+	    t = q;
+	    break;
 	}
+    }
+    if ( isdivmarker(p->text) ) {
+	char *prefix = "class";
+	int i;
+	
+	q = p->text;
+	p->text = p->text->next;
+
+	if ( (i = szmarkerclass(1+T(q->text))) == 3 )
+	    /* and this would be an "%id:" prefix */
+	    prefix="id";
+	    
+	if ( p->ident = malloc(4+i+S(q->text)) )
+	    sprintf(p->ident, "%s=\"%.*s\"", prefix, S(q->text)-(i+2),
+						     T(q->text)+(i+1) );
+
+	___mkd_freeLine(q);
     }
     return t;
 }
@@ -574,7 +659,7 @@ listitem(Paragraph *p, int indent)
 	    indent = 4;
 	}
 
-	if ( (q->dle < indent) && (ishr(q) || ishdr(q,&z) || islist(q,&z)) ) {
+	if ( (q->dle < indent) && (ishr(q) || islist(q,&z)) && !ishdr(q,&z) ) {
 	    q = t->next;
 	    t->next = 0;
 	    return q;
@@ -617,7 +702,7 @@ listblock(Paragraph *top, int trim, MMIOT *f)
 
 	if ( para && (top->typ != DL) && p->down ) p->down->align = PARA;
 
-	if ( !(q = skipempty(text)) || (islist(q,&trim) != top->typ) )
+	if ( !(q = skipempty(text)) || (islist(q, &trim) == 0) )
 	    break;
 
 	if ( para = (q != text) ) {
@@ -774,6 +859,14 @@ compile(Line *ptr, int toplevel, MMIOT *f)
 	}
 	else if ( iscode(ptr) ) {
 	    p = Pp(&d, ptr, CODE);
+	    
+	    if ( f->flags & MKD_1_COMPAT) {
+		/* HORRIBLE STANDARDS KLUDGE: the first line of every block
+		 * has trailing whitespace trimmed off.
+		 */
+		___mkd_tidy(p->text);
+	    }
+	    
 	    ptr = codeblock(p);
 	}
 	else if ( ishr(ptr) ) {
