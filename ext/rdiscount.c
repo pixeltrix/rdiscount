@@ -10,6 +10,7 @@ rb_rdiscount_to_html(int argc, VALUE *argv, VALUE self)
     /* grab char pointer to markdown input text */
     char *res;
     int szres;
+    VALUE encoding;
     VALUE text = rb_funcall(self, rb_intern("text"), 0);
     VALUE buf = rb_str_buf_new(1024);
     Check_Type(text, T_STRING);
@@ -27,6 +28,13 @@ rb_rdiscount_to_html(int argc, VALUE *argv, VALUE self)
         }
     }
     mkd_cleanup(doc);
+
+
+    /* force the input encoding */
+    if ( rb_respond_to(text, rb_intern("encoding")) ) {
+      encoding = rb_funcall(text, rb_intern("encoding"), 0);
+      rb_funcall(buf, rb_intern("force_encoding"), 1, encoding);
+    }
 
     return buf;
 }
@@ -77,6 +85,35 @@ int rb_rdiscount__get_flags(VALUE ruby_obj)
   /* generate_toc */
   if ( rb_funcall(ruby_obj, rb_intern("generate_toc"), 0) == Qtrue)
     flags = flags | MKD_TOC;
+
+  /* no_image */
+  if ( rb_funcall(ruby_obj, rb_intern("no_image"), 0) == Qtrue)
+    flags = flags | MKD_NOIMAGE;
+
+  /* no_links */
+  if ( rb_funcall(ruby_obj, rb_intern("no_links"), 0) == Qtrue)
+    flags = flags | MKD_NOLINKS;
+
+  /* no_tables */
+  if ( rb_funcall(ruby_obj, rb_intern("no_tables"), 0) == Qtrue)
+    flags = flags | MKD_NOTABLES;
+
+  /* strict */
+  if ( rb_funcall(ruby_obj, rb_intern("strict"), 0) == Qtrue)
+    flags = flags | MKD_STRICT;
+
+  /* autolink */
+  if ( rb_funcall(ruby_obj, rb_intern("autolink"), 0) == Qtrue)
+    flags = flags | MKD_AUTOLINK;
+
+  /* safelink */
+  if ( rb_funcall(ruby_obj, rb_intern("safelink"), 0) == Qtrue)
+    flags = flags | MKD_SAFELINK;
+
+  /* no_pseudo_protocols */
+  if ( rb_funcall(ruby_obj, rb_intern("no_pseudo_protocols"), 0) == Qtrue)
+    flags = flags | MKD_NO_EXT;
+
 
   return flags;
 }

@@ -94,13 +94,52 @@ class MarkdownTest < Test::Unit::TestCase
       markdown.to_html
   end
 
+  def test_filter_html_doesnt_break_two_space_hard_break
+    markdown = Markdown.new("Lorem,  \nipsum\n", :filter_html)
+    assert_equal "<p>Lorem,<br/>\nipsum</p>\n",
+      markdown.to_html
+  end
+
+  # This isn't in the spec but is Markdown.pl behavior.
+  def test_block_quotes_preceded_by_spaces
+    markdown = Markdown.new(
+      "A wise man once said:\n\n" +
+      " > Isn't it wonderful just to be alive.\n"
+    )
+    assert_equal "<p>A wise man once said:</p>\n\n" +
+      "<blockquote><p>Isn't it wonderful just to be alive.</p></blockquote>\n",
+      markdown.to_html
+  end
+
+  def test_ul_with_zero_space_indent
+    markdown = Markdown.new("- foo\n\n- bar\n\n  baz\n")
+    assert_equal "<ul><li><p>foo</p></li><li><p>bar</p><p>baz</p></li></ul>",
+      markdown.to_html.gsub("\n", "")
+  end
+
+  def test_ul_with_single_space_indent
+    markdown = Markdown.new(" - foo\n\n - bar\n\n   baz\n")
+    assert_equal "<ul><li><p>foo</p></li><li><p>bar</p><p>baz</p></li></ul>",
+      markdown.to_html.gsub("\n", "")
+  end
+
+  # http://github.com/rtomayko/rdiscount/issues/#issue/13
+  def test_headings_with_trailing_space
+    text = "The Ant-Sugar Tales \n"         +
+           "=================== \n\n"        +
+           "By Candice Yellowflower   \n"
+    markdown = Markdown.new(text)
+    assert_equal "<h1>The Ant-Sugar Tales </h1>\n\n<p>By Candice Yellowflower</p>\n",
+      markdown.to_html
+  end
+
   # Build tests for each file in the MarkdownTest test suite
 
   Dir["#{MARKDOWN_TEST_DIR}/Tests/*.text"].each do |text_file|
 
     basename = File.basename(text_file).sub(/\.text$/, '')
     html_file = text_file.sub(/text$/, 'html')
-    method_name = basename.gsub(/[-,]/, '').gsub(/\s+/, '_').downcase
+    method_name = basename.gsub(/[-,()]/, '').gsub(/\s+/, '_').downcase
 
     define_method "test_#{method_name}" do
       markdown = Markdown.new(File.read(text_file))
@@ -108,7 +147,7 @@ class MarkdownTest < Test::Unit::TestCase
       assert_not_nil actual_html
     end
 
-    define_method "test_#{method_name}_with_smarty_enabled" do
+    define_method "test_#{method_name}_smart" do
       markdown = Markdown.new(File.read(text_file), :smart)
       actual_html = markdown.to_html
       assert_not_nil actual_html
